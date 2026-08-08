@@ -1,3 +1,5 @@
+# Provenance: PAR-specific Kirin 970 VDEC fix by yukino1111 against the pinned
+# LineageOS/Huawei kernel base. Upstream file copyright and license apply.
 diff --git a/drivers/vcodec/hi_vcodec/vdec_hivna/vfmw_v4.0/firmware/hal/HiSMMUV150/smmu.c b/drivers/vcodec/hi_vcodec/vdec_hivna/vfmw_v4.0/firmware/hal/HiSMMUV150/smmu.c
 index 91cb4270d..a81a6f196 100755
 --- a/drivers/vcodec/hi_vcodec/vdec_hivna/vfmw_v4.0/firmware/hal/HiSMMUV150/smmu.c

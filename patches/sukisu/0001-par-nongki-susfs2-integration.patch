@@ -1,3 +1,6 @@
+# Provenance: SukiSU Ultra by ShirkNeko and SuSFS by simonpunk; the Huawei
+# non-GKI integration and reproducible release adaptation are maintained by
+# yukino1111. See ../../ATTRIBUTION.md.
 diff --git a/kernel/Kconfig b/kernel/Kconfig
 index 0cc760f1..e85baac9 100644
 --- a/kernel/Kconfig
@@ -75,7 +78,7 @@ index 0cc760f1..e85baac9 100644
  
  endmenu
 diff --git a/kernel/Makefile b/kernel/Makefile
-index e4d274d8..61a92313 100644
+index e4d274d8..2bf69ee2 100644
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
 @@ -3,6 +3,13 @@ obj-$(CONFIG_KSU) := ksu.o
@@ -92,10 +95,27 @@ index e4d274d8..61a92313 100644
  ifeq ($(filter /%,$(src)),)
  KSU_KERNEL_DIR := $(srctree)/$(src)
  else
-@@ -43,9 +50,11 @@ GITHUB_API_BASE  := https://api.github.com/repos/$(REPO_OWNER)/$(REPO_NAME)
- KSU_GITHUB_VER   := $(shell $(CURL_BIN) -s "$(GITHUB_API_BASE)/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"v?([^"]+)".*/\1/')
- GITHUB_COMMITS   := $(shell $(CURL_BIN) -sI "$(GITHUB_API_BASE)/commits?sha=$(REPO_BRANCH)&per_page=1" 2>/dev/null | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
- LOCAL_COUNT     := $(if $(GITHUB_COMMITS),$(GITHUB_COMMITS),$(git_commit_count))
+@@ -26,26 +33,14 @@ REPO_BRANCH := main
+ VERSION_BASE    := 40000
+ VERSION_OFFSET  := 2815
+ 
+-GIT_BIN  := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git
+-CURL_BIN := /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin curl
+-
+ KSU_SRC := $(if $(filter $(srctree),$(src)),$(src),$(srctree)/$(src))
+ KSU_SRC := $(if $(wildcard $(KSU_SRC)/../.git),$(KSU_SRC),$(MDIR))
+ 
+-git_short_sha    = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --short=8 HEAD 2>/dev/null)
+-git_branch       = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-parse --abbrev-ref HEAD 2>/dev/null)
+-git_commit_count = $(shell cd $(KSU_SRC) && $(GIT_BIN) rev-list --count $(REPO_BRANCH) 2>/dev/null)
+-git_latest_tag   = $(shell cd $(KSU_SRC) && $(GIT_BIN) describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+-
+-$(shell cd $(KSU_SRC) 2>/dev/null && [ -f ../.git/shallow ] && $(GIT_BIN) fetch --unshallow 2>/dev/null)
+-
+-GITHUB_API_BASE  := https://api.github.com/repos/$(REPO_OWNER)/$(REPO_NAME)
+-KSU_GITHUB_VER   := $(shell $(CURL_BIN) -s "$(GITHUB_API_BASE)/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"v?([^"]+)".*/\1/')
+-GITHUB_COMMITS   := $(shell $(CURL_BIN) -sI "$(GITHUB_API_BASE)/commits?sha=$(REPO_BRANCH)&per_page=1" 2>/dev/null | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p')
+-LOCAL_COUNT     := $(if $(GITHUB_COMMITS),$(GITHUB_COMMITS),$(git_commit_count))
 -KSU_VERSION     := $(if $(LOCAL_COUNT),$(shell expr $(VERSION_BASE) + $(LOCAL_COUNT) - $(VERSION_OFFSET)),13000)
 -VERSION_TAG     := $(or $(KSU_GITHUB_VER),$(git_latest_tag),4.1.2)
 -KSU_VERSION_FULL := $(if $(call git_short_sha),v$(VERSION_TAG)-$(call git_short_sha)@$(call git_branch),v$(VERSION_TAG)-$(REPO_NAME)-unknown@unknown)
@@ -140,6 +160,63 @@ index 13426406..0b3d9b69 100644
  struct umount_tw {
      struct callback_head cb;
  };
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+index f4083653..1ce1ec7c 100644
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -50,6 +50,13 @@ static char __user *ksud_user_path(void)
+ 
+ #ifdef CONFIG_KSU_SUSFS
+ extern const char __user *get_user_arg_ptr(struct user_arg_ptr argv, int nr);
++
++static __always_inline bool ksu_sucompat_allowed(void)
++{
++    return ksu_su_compat_enabled &&
++           __ksu_is_allow_uid_for_current(current_uid().val);
++}
++
+ /*
+  * return 0 -> No further checks should be required afterwards
+  * return non-zero -> Further checks should be continued afterwards
+@@ -124,7 +131,7 @@ int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr,
+     if (!ksu_handle_execveat_init(filename, (struct user_arg_ptr*)argv_user, (struct user_arg_ptr*)envp_user))
+         return 0;
+ 
+-    if (!(__ksu_is_allow_uid_for_current(current_uid().val)))
++    if (!ksu_sucompat_allowed())
+         return 0;
+ 
+     if (likely(memcmp(filename->name, su_path, sizeof(su_path))))
+@@ -179,6 +186,9 @@ int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode,
+ {
+     char path[sizeof(su_path) + 1] = {0};
+ 
++    if (unlikely(!filename_user) || !ksu_sucompat_allowed())
++        return 0;
++
+     strncpy_from_user(path, *filename_user, sizeof(path));
+ 
+     if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
+@@ -199,6 +209,9 @@ int ksu_handle_stat(int *dfd, struct filename **filename, int *flags) {
+     if (unlikely(IS_ERR(*filename) || (*filename)->name == NULL))
+         return 0;
+ 
++    if (!ksu_sucompat_allowed())
++        return 0;
++
+     if (likely(memcmp((*filename)->name, su_path, sizeof(su_path))))
+         return 0;
+ 
+@@ -219,6 +232,9 @@ int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags)
+ 
+     char path[sizeof(su_path) + 1] = {0};
+ 
++    if (!ksu_sucompat_allowed())
++        return 0;
++
+     strncpy_from_user(path, *filename_user, sizeof(path));
+ 
+     if (unlikely(!memcmp(path, su_path, sizeof(su_path)))) {
 diff --git a/kernel/hook/lsm_hook.c b/kernel/hook/lsm_hook.c
 index 00702832..5d5263ab 100644
 --- a/kernel/hook/lsm_hook.c
