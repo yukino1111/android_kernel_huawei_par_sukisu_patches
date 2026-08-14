@@ -1,0 +1,296 @@
+From e91b988f00c3e1c14659997ec4d0088476cdce46 Mon Sep 17 00:00:00 2001
+From: PAR Research <par-research@localhost>
+Date: Fri, 14 Aug 2026 23:50:43 +0800
+Subject: [PATCH] experiment: authorize KernelPatch text through HHEE
+
+---
+ kernel/Makefile      |   3 +-
+ kernel/base/map.c    | 101 +++++++++++++++++++++++++++++++++++++++++--
+ kernel/base/setup.h  |   8 +++-
+ kernel/base/setup1.S |   8 ++++
+ kernel/base/start.c  |  11 ++++-
+ 5 files changed, 121 insertions(+), 10 deletions(-)
+
+diff --git a/kernel/Makefile b/kernel/Makefile
+index 1b1d0b2..05f408c 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -14,6 +14,7 @@ CFLAGS += -g
+ CFLAGS += -Wno-unused-function -Wno-return-type -Wno-c23-extensions -Wno-uninitialized
+ CFLAGS += -fno-PIC -fno-asynchronous-unwind-tables -fno-stack-protector -fno-unwind-tables -fno-semantic-interposition -U_FORTIFY_SOURCE -fno-common
+ CFLAGS += $(PAR_CFLAGS)
++PAR_OPT_LEVEL ?= -O2
+ 
+ ifdef DEBUG
+ 	CFLAGS += -DDEBUG -DMAP_DEBUG -g
+@@ -67,7 +69,7 @@ ${TARGET}.elf: ${OBJS}
+ 	${LD} -nostdlib -static -no-pie -Tkpimg.lds -e start -o $@ $^
+ 
+ %.o: %.c
+-	${CC} $(CFLAGS) $(INCLUDE) -c -O2 -o $@ $<
++	${CC} $(CFLAGS) $(INCLUDE) -c $(PAR_OPT_LEVEL) -o $@ $<
+ 
+ base/sha256.o: base/sha256.c
+ 	${CC} $(CFLAGS) $(INCLUDE) -c -O0 -o $@ $<
+
+diff --git a/kernel/base/map.c b/kernel/base/map.c
+index 3925942..7466d87 100644
+--- a/kernel/base/map.c
++++ b/kernel/base/map.c
+@@ -7,6 +7,37 @@
+ 
+ #define NUMA_NO_NODE (-1)
+ 
++#ifdef PAR_HHEE_BRINGUP
++#define HHEE_LKM_UPDATE 0xC6001082ull
++#define HHEE_HVC_VERSION 0xC9000000ull
++#define HHEE_HVC_TOKEN 0xC6001089ull
++
++typedef struct {
++    uint64_t a0;
++    uint64_t a1;
++} hhee_res_t;
++
++static __noinline hhee_res_t hhee_hvc(uint64_t function_id, uint64_t arg0,
++                                     uint64_t arg1, uint64_t arg2)
++{
++    register uint64_t x0 asm("x0") = function_id;
++    register uint64_t x1 asm("x1") = arg0;
++    register uint64_t x2 asm("x2") = arg1;
++    register uint64_t x3 asm("x3") = arg2;
++    register uint64_t x4 asm("x4") = 0;
++    register uint64_t x5 asm("x5") = 0;
++    register uint64_t x6 asm("x6") = 0;
++    register uint64_t x7 asm("x7") = 0;
++
++    asm volatile("hvc #0"
++                 : "+r"(x0), "+r"(x1), "+r"(x2), "+r"(x3),
++                   "+r"(x4), "+r"(x5), "+r"(x6), "+r"(x7)
++                 :
++                 : "memory");
++    return (hhee_res_t){ .a0 = x0, .a1 = x1 };
++}
++#endif
++
+ typedef uint64_t phys_addr_t;
+ typedef int (*memblock_reserve_f)(phys_addr_t base, phys_addr_t size);
+ typedef phys_addr_t (*memblock_phys_alloc_try_nid_f)(phys_addr_t size, phys_addr_t align, int nid);
+@@ -420,6 +451,10 @@ void __noinline _paging_init()
+ 	map_data_t *data = &buf;
+     mem_proc(data);
+ 
++#ifdef PAR_HHEE_BRINGUP
++    hhee_res_t hhee_token;
++#endif
++
+ #ifdef MAP_DEBUG
+     printk_f printk = (printk_f)(data->printk_relo);
+ #define map_debug(idx, val) printk(data->str_fmt_px, idx, val)
+@@ -452,6 +487,20 @@ void __noinline _paging_init()
+     flush_icache_all();
+     ((paging_init_f)(paging_init_va))();
+     // can't write data below
++
++#ifdef PAR_HHEE_BRINGUP
++    /* Huawei's own HHEE clients issue this HVC after paging_init(). */
++    hhee_token = hhee_hvc(HHEE_HVC_TOKEN, 0, 0, 0);
++
++    /* Fail closed after returning to the original kernel mapping. */
++    if (hhee_token.a0 || !hhee_token.a1) {
++#ifdef MAP_DEBUG
++        ((printk_f)data->printk_relo)(
++            "KP HHEE probe rejected: token_rc=%llx\n", hhee_token.a0);
++#endif
++        return;
++    }
++#endif
+ 
+     // AttrIndx[2:0] encoding
+     uint64_t ktext_pte = get_or_create_pte(data, data->paging_init_relo, 0, 0);
+@@ -459,15 +512,15 @@ void __noinline _paging_init()
+     uint64_t attrs = *(uint64_t *)ktext_pte;
+     uint64_t attr_indx = attrs & 0b11100;
+ 
+-    // clear wxn
+-    // todo: restore wxn later
++    // Generic KernelPatch clears WXN here. HHEE forbids that transition,
++    // so the HHEE path keeps WXN set and requests executable mappings by HVC.
+     uint64_t sctlr_el1 = 0;
+     asm volatile("mrs %[reg], sctlr_el1" : [reg] "+r"(sctlr_el1));
+ #if defined(PAR_DIAG_POSTMAP_PASSTHROUGH) || defined(PAR_DIAG_POSTCOPY_PASSTHROUGH) || \
+     defined(PAR_DIAG_POSTFREE_PASSTHROUGH)
+     uint64_t probe_sctlr_el1 = sctlr_el1;
+ #endif
+-#ifndef PAR_DIAG_ROX_START_EXEC
++#if !defined(PAR_DIAG_ROX_START_EXEC) && !defined(PAR_HHEE_BRINGUP)
+     sctlr_el1 &= 0xFFFFFFFFFFF7FFFF;
+     asm volatile("msr sctlr_el1, %[reg]" : : [reg] "r"(sctlr_el1));
+ #endif
+@@ -488,7 +541,14 @@ void __noinline _paging_init()
+ 
+     for (uint64_t off = 0; off < all_size; off += page_size) {
+         uint64_t entry = get_or_create_pte(data, start_va + off, start_pa + off, attr_indx);
++#ifdef PAR_HHEE_BRINGUP
++        /* Copy through RW+NX pages. WXN therefore remains effective. */
++        *(uint64_t *)entry = (*(uint64_t *)entry |
++                              (1ull << 51) | (1ull << 53) | (3ull << 8)) &
++                             ~(1ull << 7) & ~(1ull << 50);
++#else
+         *(uint64_t *)entry = (*(uint64_t *)entry | 0x8000000000000) & 0xFFDFFFFFFFFFFF7F;
++#endif
+     }
+     flush_tlb_all();
+ 
+@@ -510,6 +570,35 @@ void __noinline _paging_init()
+ 
+     sync_icache_range(start_va, start_va + data->start_img_size);
+ 
++#ifdef PAR_HHEE_BRINGUP
++    /*
++     * Match Huawei's module loader ordering: finish all writes, make the
++     * stage-1 text mapping read-only and executable, then ask HHEE to
++     * authorize the same range in stage 2.
++     */
++    uint64_t text_size = (data->start_text_size + page_size - 1) & ~(page_size - 1);
++    for (uint64_t off = 0; off < text_size; off += page_size) {
++        uint64_t entry = get_or_create_pte(data, start_va + off,
++                                           start_pa + off, attr_indx);
++        uint64_t value = *(uint64_t *)entry;
++        value |= (1ull << 7) | (3ull << 8);
++        value &= ~(1ull << 51) & ~(1ull << 53) & ~(1ull << 50);
++        *(uint64_t *)entry = value;
++    }
++    flush_tlb_all();
++
++    hhee_res_t hhee_exec = hhee_hvc(HHEE_LKM_UPDATE, start_va,
++                                    text_size, hhee_token.a1);
++#ifdef MAP_DEBUG
++    ((printk_f)data->printk_relo)(
++        "KP HHEE authorize: token=ok exec_rc=%llx text=%llx\n",
++        hhee_exec.a0, text_size);
++#endif
++    if (hhee_exec.a0)
++        return;
++    sync_icache_range(start_va, start_va + text_size);
++#endif
++
+ #ifdef PAR_DIAG_ROX_START_EXEC
+     /*
+      * Keep SCTLR.WXN enabled and make copied code read-only and executable
+@@ -580,7 +669,13 @@ void __noinline _paging_init()
+ #endif
+ 
+     // start
+-    ((start_f)start_va)(data->kimage_voffset, data->linear_voffset);
++    ((start_f)start_va)(data->kimage_voffset, data->linear_voffset,
++#ifdef PAR_HHEE_BRINGUP
++                        hhee_token.a1
++#else
++                        0
++#endif
++    );
+ #ifdef PAR_DIAG_RESTORE_WXN_AFTER_START
+     uint64_t probe_post_start_sctlr_el1;
+ 
+diff --git a/kernel/base/setup.h b/kernel/base/setup.h
+index 1b1a57d..81ad970 100644
+--- a/kernel/base/setup.h
++++ b/kernel/base/setup.h
+@@ -30,6 +30,7 @@ typedef struct
+     int64_t map_offset;
+     int64_t start_offset;
+     int64_t start_size;
++    int64_t start_text_size;
+     int64_t start_img_size;
+     int64_t extra_size;
+     int64_t alloc_size;
+@@ -54,7 +55,8 @@ typedef struct
+ #define map_map_offset_offset (map_paging_init_backup_offset + 8)
+ #define map_start_offset_offset (map_map_offset_offset + 8)
+ #define map_start_size_offset (map_start_offset_offset + 8)
+-#define map_start_img_size_offset (map_start_size_offset + 8)
++#define map_start_text_size_offset (map_start_size_offset + 8)
++#define map_start_img_size_offset (map_start_text_size_offset + 8)
+ #define map_extra_size_offset (map_start_img_size_offset + 8)
+ #define map_alloc_size_offset (map_extra_size_offset + 8)
+ #define map_kernel_pa_offset (map_alloc_size_offset + 8)
+@@ -73,7 +75,8 @@ typedef struct
+ #endif
+ 
+ #ifndef __ASSEMBLY__
+-typedef int (*start_f)(uint64_t kimage_voffset, uint64_t linear_voffset);
++typedef int (*start_f)(uint64_t kimage_voffset, uint64_t linear_voffset,
++                       uint64_t hhee_token);
+ extern void _start_kernel();
+ extern void _paging_init();
+ extern void _link_base();
+@@ -84,6 +87,7 @@ extern void _map_start();
+ extern void _map_text();
+ extern void _map_data();
+ extern void _map_end();
++extern void _kp_text_end();
+ extern void _kp_end();
+ #endif // __ASSEMBLY__
+ 
+diff --git a/kernel/base/setup1.S b/kernel/base/setup1.S
+index f7a844c..3dc2c10 100644
+--- a/kernel/base/setup1.S
++++ b/kernel/base/setup1.S
+@@ -236,6 +236,14 @@ map_prepare:
+     add x12, x12, :lo12:_kp_start
+     sub x11, x11, x12
+     str x11, [x9, #map_start_size_offset]
++
++    // map_data.start_text_size = (int64_t)(_kp_text_end - _kp_start);
++    adrp x11, _kp_text_end
++    add x11, x11, :lo12:_kp_text_end
++    adrp x12, _kp_start
++    add x12, x12, :lo12:_kp_start
++    sub x11, x11, x12
++    str x11, [x9, #map_start_text_size_offset]
+     
+     // map_data.extra_size = setup_preset.extra_size;
+     ldr x11, [x10, #setup_extra_size_offset]
+diff --git a/kernel/base/start.c b/kernel/base/start.c
+index 30de4fb..b7c6282 100644
+--- a/kernel/base/start.c
++++ b/kernel/base/start.c
+@@ -29,6 +29,9 @@ void _start() __attribute__((alias("start")));
+ 
+ start_preset_t start_preset __attribute__((section(".start.data")));
+ 
++uint64_t hhee_token = 0;
++KP_EXPORT_SYMBOL(hhee_token);
++
+ setup_header_t *setup_header = 0;
+ KP_EXPORT_SYMBOL(setup_header);
+ 
+@@ -575,7 +578,9 @@ static void start_init(uint64_t kimage_voff, uint64_t linear_voff)
+ void symbol_init();
+ int patch();
+ 
+-int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_voff, uint64_t linear_voff)
++int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_voff,
++                                                             uint64_t linear_voff,
++                                                             uint64_t token)
+ {
+ #ifdef PAR_DIAG_START_EMPTY
+     return 0;
+@@ -606,12 +611,14 @@ int __attribute__((section(".start.text"))) __noinline start(uint64_t kimage_vof
+ #endif
+ 
+     int rc = 0;
++    hhee_token = token;
+     start_init(kimage_voff, linear_voff);
+ #if defined(PAR_DIAG_START_INIT_GLOBALS_ONLY) || \
+     defined(PAR_DIAG_START_INIT_FIRST_HALF) || \
+     defined(PAR_DIAG_START_INIT_SECOND_HALF) || \
+     defined(PAR_DIAG_START_INIT_AFTER_SYMS) || \
+-    defined(PAR_DIAG_START_AFTER_INIT)
++    defined(PAR_DIAG_START_AFTER_INIT) || \
++    defined(PAR_HHEE_BASE_PASSTHROUGH)
+     /*
+      * WXN was disabled by the outer mapping trampoline so this relocated
+      * start image can execute while it is still writable.  Do not restore
+-- 
+2.53.0
