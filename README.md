@@ -51,6 +51,14 @@ make -C /path/to/kernel O=/path/to/out ARCH=arm64 CROSS_COMPILE=aarch64-linux-an
 make -C /path/to/kernel O=/path/to/out ARCH=arm64 CROSS_COMPILE=aarch64-linux-android- -j"$(nproc)"
 ```
 
+## Automation
+
+`Build pinned PAR kernel` reproduces and packages both the strict Enforcing and
+SELinux-switchable configurations on GitHub-hosted runners. It is manual-only
+and is not started by source pushes or a schedule. Workflow artifacts are
+unverified candidates, not releases. A device-tested release remains a
+separate, manual promotion.
+
 ## Installation
 
 Back up the original kernel image and make sure the bootloader is unlocked.

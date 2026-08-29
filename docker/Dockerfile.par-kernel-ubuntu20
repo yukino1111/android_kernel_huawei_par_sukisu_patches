@@ -1,0 +1,51 @@
+ARG BASE_IMAGE=ubuntu:20.04
+FROM ${BASE_IMAGE}
+
+ARG USER_NAME=android
+ARG USER_ID=1000
+ARG GROUP_ID=1000
+
+ENV DEBIAN_FRONTEND=noninteractive
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      bc \
+      bison \
+      build-essential \
+      ca-certificates \
+      cpio \
+      device-tree-compiler \
+      file \
+      flex \
+      git \
+      libelf-dev \
+      libncurses-dev \
+      libssl-dev \
+      locales \
+      lz4 \
+      lzop \
+      python2 \
+      python2-dev \
+      python3 \
+      rsync \
+      unzip \
+      xxd \
+      zip \
+      zlib1g-dev; \
+    locale-gen en_US.UTF-8; \
+    ln -sf /usr/bin/python2 /usr/bin/python; \
+    if ! getent group "${GROUP_ID}" >/dev/null; then groupadd -g "${GROUP_ID}" "${USER_NAME}"; fi; \
+    useradd -m -u "${USER_ID}" -g "${GROUP_ID}" -s /bin/bash "${USER_NAME}"; \
+    mkdir -p /workspace; \
+    chown "${USER_ID}:${GROUP_ID}" /workspace; \
+    rm -rf /var/lib/apt/lists/*
+
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8 \
+    SHELL=/bin/bash
+
+USER ${USER_NAME}
+WORKDIR /workspace

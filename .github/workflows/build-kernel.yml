@@ -1,0 +1,42 @@
+name: Build pinned PAR kernel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pinned-kernel-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.config }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - enforcing
+          - selinux-switchable
+    steps:
+      - name: Check out the PAR patch set
+        uses: actions/checkout@v7
+
+      - name: Show runner storage
+        run: df -h /
+
+      - name: Build and package the pinned kernel
+        env:
+          JOBS: 4
+        run: scripts/ci-build.sh "${{ matrix.config }}" "$RUNNER_TEMP/par-kernel-${{ matrix.config }}"
+
+      - name: Upload the candidate image
+        uses: actions/upload-artifact@v7
+        with:
+          name: par-kernel-pinned-${{ matrix.config }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/par-kernel-${{ matrix.config }}/dist/*
+          if-no-files-found: error
+          retention-days: 30
