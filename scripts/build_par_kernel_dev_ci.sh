@@ -9,6 +9,7 @@ state_file="$repo_root/SOURCE_STATE"
 enable_ksu="${ENABLE_KSU:-1}"
 enable_susfs="${ENABLE_SUSFS:-1}"
 enable_rekernel="${ENABLE_REKERNEL:-1}"
+enable_rekernel_network="${ENABLE_REKERNEL_NETWORK:-0}"
 enable_network="${ENABLE_NETWORK:-1}"
 enable_droidspaces="${ENABLE_DROIDSPACES:-1}"
 enable_ntsync="${ENABLE_NTSYNC:-1}"
@@ -48,7 +49,7 @@ apply_series() {
 }
 
 for variable in \
-  enable_ksu enable_susfs enable_rekernel enable_network enable_droidspaces \
+  enable_ksu enable_susfs enable_rekernel enable_rekernel_network enable_network enable_droidspaces \
   enable_ntsync enable_bbg; do
   printf -v "$variable" '%s' "$(normalize_bool "${!variable}")"
 done
@@ -149,6 +150,7 @@ docker run --rm \
   --env ENABLE_KSU="$enable_ksu" \
   --env ENABLE_SUSFS="$enable_susfs" \
   --env ENABLE_REKERNEL="$enable_rekernel" \
+  --env ENABLE_REKERNEL_NETWORK="$enable_rekernel_network" \
   --env ENABLE_NETWORK="$enable_network" \
   --env ENABLE_DROIDSPACES="$enable_droidspaces" \
   --env ENABLE_NTSYNC="$enable_ntsync" \
@@ -176,6 +178,7 @@ rm -f "$dist_dir/image-path.txt"
   printf 'enable_ksu=%s\n' "$enable_ksu"
   printf 'enable_susfs=%s\n' "$enable_susfs"
   printf 'enable_rekernel=%s\n' "$enable_rekernel"
+  printf 'enable_rekernel_network=%s\n' "$enable_rekernel_network"
   printf 'enable_network=%s\n' "$enable_network"
   printf 'enable_droidspaces=%s\n' "$enable_droidspaces"
   printf 'enable_ntsync=%s\n' "$enable_ntsync"

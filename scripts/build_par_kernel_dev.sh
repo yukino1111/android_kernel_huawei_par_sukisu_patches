@@ -12,6 +12,7 @@ jobs="${JOBS:-$(nproc)}"
 enable_ksu="${ENABLE_KSU:-1}"
 enable_susfs="${ENABLE_SUSFS:-1}"
 enable_rekernel="${ENABLE_REKERNEL:-1}"
+enable_rekernel_network="${ENABLE_REKERNEL_NETWORK:-0}"
 enable_network="${ENABLE_NETWORK:-1}"
 enable_droidspaces="${ENABLE_DROIDSPACES:-1}"
 enable_ntsync="${ENABLE_NTSYNC:-1}"
@@ -68,16 +69,22 @@ if [ "$enable_susfs" = 1 ]; then
     KSU_SUSFS_SUS_PATH KSU_SUSFS_SUS_MOUNT KSU_SUSFS_SUS_KSTAT \
     KSU_SUSFS_SPOOF_UNAME KSU_SUSFS_ENABLE_LOG \
     KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS \
-    KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG KSU_SUSFS_OPEN_REDIRECT \
-    KSU_SUSFS_SUS_MAP; do
+    KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG KSU_SUSFS_OPEN_REDIRECT; do
     set_config -e "$symbol"
   done
+  # SUS_MAP is not part of the verified PAR 4.9 SukiSU+SuSFS profile.
+  set_config -d KSU_SUSFS_SUS_MAP
 else
   set_config -d KSU_SUSFS
 fi
 
 if [ "$enable_rekernel" = 1 ]; then
-  set_config -e REKERNEL -e REKERNEL_NETWORK
+  set_config -e REKERNEL
+  if [ "$enable_rekernel_network" = 1 ]; then
+    set_config -e REKERNEL_NETWORK
+  else
+    set_config -d REKERNEL_NETWORK
+  fi
 else
   set_config -d REKERNEL -d REKERNEL_NETWORK
 fi
@@ -139,7 +146,11 @@ if [ "$enable_ksu" = 1 ]; then require_y KSU; else require_disabled KSU; fi
 if [ "$enable_susfs" = 1 ]; then require_y KSU_SUSFS; else require_disabled KSU_SUSFS; fi
 if [ "$enable_rekernel" = 1 ]; then
   require_y REKERNEL
-  require_y REKERNEL_NETWORK
+  if [ "$enable_rekernel_network" = 1 ]; then
+    require_y REKERNEL_NETWORK
+  else
+    require_disabled REKERNEL_NETWORK
+  fi
 else
   require_disabled REKERNEL
 fi
@@ -175,7 +186,7 @@ fi
 make -C "$kernel_dir" O="$out_dir" -j"$jobs"
 [ -s "$out_dir/arch/arm64/boot/Image.gz" ] || die "build completed without Image.gz"
 
-feature_tag="ksu${enable_ksu}-susfs${enable_susfs}-rk${enable_rekernel}"
+feature_tag="ksu${enable_ksu}-susfs${enable_susfs}-rk${enable_rekernel}-rkn${enable_rekernel_network}"
 feature_tag+="-net${enable_network}-ds${enable_droidspaces}"
 feature_tag+="-ntsync${enable_ntsync}-bbg${enable_bbg}"
 output="$dist_dir/KERNEL-PAR-${selinux_mode}-${feature_tag}.img"

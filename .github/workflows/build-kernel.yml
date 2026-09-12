@@ -22,9 +22,14 @@ on:
         default: true
         type: boolean
       enable_rekernel:
-        description: Re-Kernel including its network wake support
+        description: Re-Kernel Binder and signal support
         required: true
         default: true
+        type: boolean
+      enable_rekernel_network:
+        description: Experimental Re-Kernel network wake monitor
+        required: true
+        default: false
         type: boolean
       enable_droidspaces:
         description: DroidSpaces legacy-kernel requirements
@@ -71,6 +76,7 @@ jobs:
           ENABLE_KSU: ${{ inputs.enable_ksu && 1 || 0 }}
           ENABLE_SUSFS: ${{ inputs.enable_susfs && 1 || 0 }}
           ENABLE_REKERNEL: ${{ inputs.enable_rekernel && 1 || 0 }}
+          ENABLE_REKERNEL_NETWORK: ${{ inputs.enable_rekernel_network && 1 || 0 }}
           ENABLE_DROIDSPACES: ${{ inputs.enable_droidspaces && 1 || 0 }}
           ENABLE_NTSYNC: ${{ inputs.enable_ntsync && 1 || 0 }}
           ENABLE_BBG: ${{ inputs.enable_bbg && 1 || 0 }}
