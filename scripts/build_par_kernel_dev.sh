@@ -117,6 +117,10 @@ if [ "$enable_droidspaces" = 1 ]; then
     set_config -e "$symbol"
   done
   set_config -d CGROUP_PIDS -d ANDROID_PARANOID_NETWORK
+  # Huawei ships pagecache_manage as GCC-generated assembly built for the
+  # stock !MEMCG/TASK_PROTECT_LRU layout.  MEMCG changes that layout, so use
+  # the normal kernel readahead implementation instead of the stale helper.
+  set_config -d HISI_PAGECACHE_HELPER
 fi
 
 if [ "$enable_network" = 1 ]; then
@@ -171,6 +175,7 @@ if [ "$enable_droidspaces" = 1 ]; then
   done
   require_disabled CGROUP_PIDS
   require_disabled ANDROID_PARANOID_NETWORK
+  require_disabled HISI_PAGECACHE_HELPER
 fi
 
 if [ "$enable_network" = 1 ]; then

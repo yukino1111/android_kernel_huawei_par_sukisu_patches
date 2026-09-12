@@ -78,6 +78,8 @@ fetch_revision "$(state_value toolchain_url)" "$(state_value toolchain_commit)" 
 fetch_revision "$(state_value susfs_dev_url)" "$(state_value susfs_dev_ref)" "$susfs_tree"
 
 apply_series "$kernel_tree" "$repo_root/patches/kernel/series"
+git -C "$kernel_tree" apply \
+  "$repo_root/patches/dev/kernel/0006-par-hisi-pagecache-memcg-compat.patch"
 cp "$susfs_tree/kernel_patches/fs/susfs.c" "$kernel_tree/fs/susfs.c"
 cp "$susfs_tree/kernel_patches/include/linux/susfs.h" "$kernel_tree/include/linux/susfs.h"
 cp "$susfs_tree/kernel_patches/include/linux/susfs_def.h" "$kernel_tree/include/linux/susfs_def.h"
@@ -181,6 +183,11 @@ rm -f "$dist_dir/image-path.txt"
   printf 'enable_rekernel_network=%s\n' "$enable_rekernel_network"
   printf 'enable_network=%s\n' "$enable_network"
   printf 'enable_droidspaces=%s\n' "$enable_droidspaces"
+  if [ "$enable_droidspaces" = 1 ]; then
+    printf 'hisi_pagecache_helper=disabled-for-memcg\n'
+  else
+    printf 'hisi_pagecache_helper=stock-config\n'
+  fi
   printf 'enable_ntsync=%s\n' "$enable_ntsync"
   printf 'enable_bbg=%s\n' "$enable_bbg"
   printf 'unicode_hardening=unsupported-linux-4.9-no-fs-unicode\n'

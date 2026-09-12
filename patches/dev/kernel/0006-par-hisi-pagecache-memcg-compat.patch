@@ -1,0 +1,44 @@
+diff --git a/mm/Kconfig b/mm/Kconfig
+index f42c19a..ecb2862 100644
+--- a/mm/Kconfig
++++ b/mm/Kconfig
+@@ -768,6 +768,7 @@ config HISI_RESORT_ZONE_FREELIST
+ 
+ config HISI_PAGECACHE_HELPER
+ 	tristate "KIRIN page cache helper module"
++	depends on !MEMCG
+ 	default n
+ 
+ 	---help---
+diff --git a/mm/Makefile b/mm/Makefile
+index e75f51a..a467287 100644
+--- a/mm/Makefile
++++ b/mm/Makefile
+@@ -104,5 +104,6 @@ obj-$(CONFIG_HARDENED_USERCOPY) += usercopy.o
+ obj-$(CONFIG_PROCESS_RECLAIM)	+= process_reclaim.o
+ obj-$(CONFIG_HISI_MM) += hisi/
+ obj-$(CONFIG_HISI_PAGECACHE_HELPER) += pagecache_manage.o
++obj-y += pagecache_manage_compat.o
+ obj-$(CONFIG_HISI_PAGECACHE_DEBUG) += pagecache_debug.o
+ obj-$(CONFIG_HUAWEI_UNMOVABLE_ISOLATE) += unmovable_isolate.o
+diff --git a/mm/pagecache_manage_compat.c b/mm/pagecache_manage_compat.c
+new file mode 100644
+index 0000000..f03fb09
+--- /dev/null
++++ b/mm/pagecache_manage_compat.c
+@@ -0,0 +1,15 @@
++/*
++ * Compatibility for Huawei pre-generated storage scheduler assembly.
++ *
++ * The UFS scheduler calls pch_lowmem_check2() unconditionally even when the
++ * page-cache helper is disabled.  MEMCG cannot safely use that helper because
++ * pagecache_manage.S was generated against the stock !MEMCG structure layout.
++ */
++#include <linux/types.h>
++
++#ifndef CONFIG_HISI_PAGECACHE_HELPER
++int pch_lowmem_check2(void)
++{
++	return 0;
++}
++#endif
