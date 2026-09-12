@@ -83,7 +83,7 @@ mkdir -p "$deps_dir" "$dist_dir"
 
 fetch_revision "$(state_value kernel_url)" "$(state_value kernel_commit)" "$kernel_tree"
 fetch_revision "$(state_value toolchain_url)" "$(state_value toolchain_commit)" "$toolchain_tree"
-fetch_revision "$(state_value susfs_dev_url)" "$(state_value susfs_dev_ref)" "$susfs_tree"
+fetch_revision "$(state_value susfs_dev_url)" "$(state_value susfs_dev_commit)" "$susfs_tree"
 
 apply_series "$kernel_tree" "$repo_root/patches/kernel/series"
 git -C "$kernel_tree" apply \
@@ -99,7 +99,7 @@ if [ "$enable_ksu" = 1 ]; then
   # count. A depth-1 checkout would incorrectly compile every dev build as
   # version 30001.
   fetch_revision_with_history \
-    "$(state_value kernelsu_url)" "$(state_value kernelsu_ref)" "$ksu_tree"
+    "$(state_value kernelsu_url)" "$(state_value kernelsu_commit)" "$ksu_tree"
   [ ! -f "$ksu_tree/.git/shallow" ] || die "KernelSU history is unexpectedly shallow"
   ksu_git_version="$(git -C "$ksu_tree" rev-list --count HEAD)"
   ksu_version="$((30000 + ksu_git_version))"
@@ -110,7 +110,7 @@ if [ "$enable_ksu" = 1 ]; then
 fi
 
 if [ "$enable_rekernel" = 1 ]; then
-  fetch_revision "$(state_value rekernel_url)" "$(state_value rekernel_ref)" "$rekernel_tree"
+  fetch_revision "$(state_value rekernel_url)" "$(state_value rekernel_commit)" "$rekernel_tree"
   placeholder="$kernel_tree/arch/arm64/configs/defconfig"
   [ -e "$placeholder" ] || : > "$placeholder"
   (cd "$kernel_tree" && bash "$rekernel_tree/Integrate/patches.sh")
@@ -125,7 +125,7 @@ if [ "$enable_rekernel" = 1 ]; then
 fi
 
 if [ "$enable_droidspaces" = 1 ]; then
-  fetch_revision "$(state_value droidspaces_url)" "$(state_value droidspaces_ref)" "$droidspaces_tree"
+  fetch_revision "$(state_value droidspaces_url)" "$(state_value droidspaces_commit)" "$droidspaces_tree"
   git -C "$kernel_tree" apply \
     "$droidspaces_tree/Documentation/resources/kernel-patches/non-GKI/01.fix_kernel_panic_in_xt_qtaguid.patch"
   git -C "$kernel_tree" apply \
@@ -133,14 +133,14 @@ if [ "$enable_droidspaces" = 1 ]; then
 fi
 
 if [ "$enable_ntsync" = 1 ]; then
-  fetch_revision "$(state_value kernel_patches_url)" "$(state_value kernel_patches_ref)" "$kernel_patches_tree"
+  fetch_revision "$(state_value kernel_patches_url)" "$(state_value kernel_patches_commit)" "$kernel_patches_tree"
   git -C "$kernel_tree" apply "$kernel_patches_tree/common/ntsync/ntsync_base.patch"
   git -C "$kernel_tree" apply \
     "$repo_root/patches/dev/kernel/0003-par-ntsync-4.9-compat.patch"
 fi
 
 if [ "$enable_bbg" = 1 ]; then
-  fetch_revision "$(state_value baseband_guard_url)" "$(state_value baseband_guard_ref)" "$bbg_tree"
+  fetch_revision "$(state_value baseband_guard_url)" "$(state_value baseband_guard_commit)" "$bbg_tree"
   apply_series "$bbg_tree" "$repo_root/patches/dev/baseband-guard/series"
   ln -s ../deps/baseband-guard "$kernel_tree/Baseband-guard"
   (cd "$kernel_tree" && sh Baseband-guard/setup.sh "$(git -C "$bbg_tree" rev-parse HEAD)")
@@ -185,13 +185,13 @@ rm -f "$dist_dir/image-path.txt"
   printf 'development_build=1\n'
   printf 'kernel_commit=%s\n' "$(git -C "$kernel_tree" rev-parse HEAD)"
   printf 'toolchain_commit=%s\n' "$(git -C "$toolchain_tree" rev-parse HEAD)"
-  printf 'susfs_dev_commit=%s\n' "$(git -C "$susfs_tree" rev-parse HEAD)"
+  printf 'susfs_commit=%s\n' "$(git -C "$susfs_tree" rev-parse HEAD)"
   if [ "$enable_ksu" = 1 ]; then
     printf 'kernelsu_commit=%s\n' "$(git -C "$ksu_tree" rev-parse HEAD)"
     printf 'kernelsu_internal_version=%s\n' "$ksu_version"
   fi
   [ "$enable_rekernel" = 0 ] || printf 'rekernel_commit=%s\n' "$(git -C "$rekernel_tree" rev-parse HEAD)"
-  [ "$enable_droidspaces" = 0 ] || printf 'droidspaces_dev_commit=%s\n' "$(git -C "$droidspaces_tree" rev-parse HEAD)"
+  [ "$enable_droidspaces" = 0 ] || printf 'droidspaces_commit=%s\n' "$(git -C "$droidspaces_tree" rev-parse HEAD)"
   [ "$enable_ntsync" = 0 ] || printf 'kernel_patches_commit=%s\n' "$(git -C "$kernel_patches_tree" rev-parse HEAD)"
   [ "$enable_bbg" = 0 ] || printf 'baseband_guard_commit=%s\n' "$(git -C "$bbg_tree" rev-parse HEAD)"
   printf 'selinux_mode=%s\n' "$selinux_mode"
