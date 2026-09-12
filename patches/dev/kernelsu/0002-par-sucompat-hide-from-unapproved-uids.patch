@@ -1,0 +1,24 @@
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+index 368443d3..5289b951 100644
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -250,6 +250,9 @@ int ksu_handle_faccessat(int *dfd, struct filename **filename, int *mode,
+     if (likely(memcmp((*filename)->name, su_path, sizeof(su_path))))
+         return 0;
+ 
++    if (!__ksu_is_allow_uid_for_current(current_uid().val))
++        return 0;
++
+     if (current_chrooted())
+     {
+         pr_err("ksu_handle_faccessat: su found but NOT allowed! Because current process is running in chrooted environment\n");
+@@ -268,6 +271,9 @@ int ksu_handle_stat(int *dfd, struct filename **filename, int *flags) {
+     if (likely(memcmp((*filename)->name, su_path, sizeof(su_path))))
+         return 0;
+ 
++    if (!__ksu_is_allow_uid_for_current(current_uid().val))
++        return 0;
++
+     if (current_chrooted())
+     {
+         pr_err("ksu_handle_stat: su found but NOT allowed! Because current process is running in chrooted environment\n");
