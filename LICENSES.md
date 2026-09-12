@@ -11,6 +11,13 @@ specific upstream notice applies.
   `patches/kernel/0001-par-android13-sukisu-susfs2.patch` retain
   GPL-3.0-or-later; that license text is under `LICENSES/`.
 - Existing file-level copyright and license notices take precedence.
+- `patches/dev/kernelsu/` is a compatibility delta over KernelSU plus SuSFS and
+  retains their applicable upstream notices.
+- `patches/dev/kernel/` contains Linux-derived compatibility changes and small
+  adaptations for Re-Kernel, DroidSpaces, and NTSync; upstream file notices
+  remain authoritative.
+- `patches/dev/baseband-guard/` is derived from Baseband Guard and retains its
+  upstream terms.
 
 Original authors and the PAR-specific maintenance boundary are recorded in
 `ATTRIBUTION.md`.

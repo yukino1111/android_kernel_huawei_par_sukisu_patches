@@ -1,0 +1,331 @@
+diff --git a/drivers/input/input.c b/drivers/input/input.c
+index b970b8e70..ca28ff42d 100644
+--- a/drivers/input/input.c
++++ b/drivers/input/input.c
+@@ -26,6 +26,7 @@
+ #include <linux/poll.h>
+ #include <linux/device.h>
+ #include <linux/mutex.h>
++#include <linux/jump_label.h>
+ #include <linux/rcupdate.h>
+ #include "input-compat.h"
+ 
+@@ -426,8 +427,8 @@ static void input_handle_event(struct input_dev *dev,
+  * axis, etc.
+  */
+ 
+-#ifdef CONFIG_KSU_SUSFS
+-extern bool ksu_input_hook __read_mostly;
++#ifdef CONFIG_KSU
++extern struct static_key_true ksu_is_input_hook_enabled;
+ extern __attribute__((cold)) int ksu_handle_input_handle_event(
+ 			unsigned int *type, unsigned int *code, int *value);
+ #endif
+@@ -437,8 +438,8 @@ void input_event(struct input_dev *dev,
+ {
+ 	unsigned long flags;
+ 
+-	#ifdef CONFIG_KSU_SUSFS
+-	if (unlikely(ksu_input_hook))
++	#ifdef CONFIG_KSU
++	if (static_branch_likely(&ksu_is_input_hook_enabled))
+ 		ksu_handle_input_handle_event(&type, &code, &value);
+ 	#endif
+ 
+diff --git a/fs/namei.c b/fs/namei.c
+index c4c08a9f5..0c3eb41ac 100644
+--- a/fs/namei.c
++++ b/fs/namei.c
+@@ -2442,8 +2442,8 @@ static int path_lookupat(struct nameidata *nd, unsigned flags, struct path *path
+ 	return err;
+ }
+ 
+-static int filename_lookup(int dfd, struct filename *name, unsigned flags,
+-			   struct path *path, struct path *root)
++int filename_lookup(int dfd, struct filename *name, unsigned flags,
++		    struct path *path, struct path *root)
+ {
+ 	int retval;
+ 	struct nameidata nd;
+diff --git a/fs/open.c b/fs/open.c
+index 477546988..71a97beb7 100644
+--- a/fs/open.c
++++ b/fs/open.c
+@@ -373,10 +373,9 @@ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ 
+ #ifdef CONFIG_KSU
+ 	extern int ksu_handle_faccessat(int *dfd,
+-					const char __user **filename_user,
++					struct filename **filename_ptr,
+ 					int *mode, int *flags);
+-
+-	ksu_handle_faccessat(&dfd, &filename, &mode, NULL);
++	struct filename *fname;
+ #endif
+ 
+ 	if (mode & ~S_IRWXO)	/* where's F_OK, X_OK, W_OK, R_OK? */
+@@ -401,7 +400,13 @@ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
+ 
+ 	old_cred = override_creds(override_cred);
+ retry:
++#ifdef CONFIG_KSU
++	fname = getname_flags(filename, lookup_flags, NULL);
++	ksu_handle_faccessat(&dfd, &fname, &mode, NULL);
++	res = filename_lookup(dfd, fname, lookup_flags, &path, NULL);
++#else
+ 	res = user_path_at(dfd, filename, lookup_flags, &path);
++#endif
+ 	if (res)
+ 		goto out;
+ 
+diff --git a/fs/proc/fd.c b/fs/proc/fd.c
+index a2c908710..7bbf90049 100644
+--- a/fs/proc/fd.c
++++ b/fs/proc/fd.c
+@@ -11,7 +11,7 @@
+ #include <linux/fs.h>
+ 
+ #include <linux/proc_fs.h>
+-#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
++#ifdef CONFIG_KSU_SUSFS
+ #include <linux/susfs_def.h>
+ #endif
+ 
+@@ -22,9 +22,10 @@
+ #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+ int susfs_get_non_sus_mnt_id_from_mnt(struct mount *orig_mnt);
+ #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+-extern int susfs_open_redirect_spoof_seq_show(struct inode *inode,
+-		int *out_mnt_id, unsigned long *out_ino);
++#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
++extern bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
++extern void susfs_sus_kstat_spoof_proc_fd_seq_show(int *out_target_mnt_id,
++		unsigned long *out_target_ino, dev_t target_dev);
+ #endif
+ 
+ static int seq_show(struct seq_file *m, void *v)
+@@ -36,10 +37,6 @@ static int seq_show(struct seq_file *m, void *v)
+ #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+ 	struct mount *mnt = NULL;
+ #endif
+-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+-	int spoofed_mnt_id = 0;
+-	unsigned long spoofed_ino = 0;
+-#endif
+ 
+ 	task = get_proc_task(m->private);
+ 	if (!task)
+@@ -70,6 +67,24 @@ static int seq_show(struct seq_file *m, void *v)
+ 	if (ret)
+ 		return ret;
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
++	if (susfs_is_current_app_uid()) {
++		struct inode *inode = file_inode(file);
++		bool is_fuse = false;
++
++		if (susfs_is_inode_sus_kstat(inode, &is_fuse)) {
++			int mnt_id = real_mount(file->f_path.mnt)->mnt_id;
++			unsigned long ino = inode->i_ino;
++
++			susfs_sus_kstat_spoof_proc_fd_seq_show(&mnt_id, &ino,
++					inode->i_sb->s_dev);
++			seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\nino:\t%lu\n",
++					(long long)file->f_pos, f_flags, mnt_id, ino);
++			goto bypass_orig_flow;
++		}
++	}
++#endif
++
+ #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+ 	mnt = real_mount(file->f_path.mnt);
+ 	if (mnt->mnt_id >= DEFAULT_KSU_MNT_ID &&
+@@ -106,16 +121,6 @@ static int seq_show(struct seq_file *m, void *v)
+ 		kfree(pathname);
+ 	}
+ orig_flow:
+-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+-	if (SUSFS_IS_INODE_OPEN_REDIRECT(file_inode(file)) &&
+-		!susfs_open_redirect_spoof_seq_show(file_inode(file),
+-			&spoofed_mnt_id, &spoofed_ino)) {
+-		seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\nino:\t%lu\n",
+-				(long long)file->f_pos, f_flags,
+-				spoofed_mnt_id, spoofed_ino);
+-		goto bypass_orig_flow;
+-	}
+-#endif
+ 	seq_printf(m, "pos:\t%lli\nflags:\t0%o\nmnt_id:\t%i\nino:\t%lu\n",
+ 			(long long)file->f_pos, f_flags,
+ 			mnt->mnt_id,
+@@ -126,6 +131,9 @@ static int seq_show(struct seq_file *m, void *v)
+ 		   (long long)file->f_pos, f_flags,
+ 		   real_mount(file->f_path.mnt)->mnt_id);
+ 
++#endif
++#ifndef CONFIG_KSU_SUSFS_SUS_MOUNT
++bypass_orig_flow:
+ #endif
+ 	show_fd_locks(m, file, files);
+ 	if (seq_has_overflowed(m))
+diff --git a/fs/read_write.c b/fs/read_write.c
+index 0436673aa..cebbd0ee3 100644
+--- a/fs/read_write.c
++++ b/fs/read_write.c
+@@ -490,16 +490,6 @@ ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
+ {
+ 	ssize_t ret;
+ 
+-#ifdef CONFIG_KSU
+-	extern bool ksu_vfs_read_hook;
+-	extern int ksu_handle_vfs_read(struct file **file_ptr,
+-				       char __user **buf_ptr,
+-				       size_t *count_ptr, loff_t **pos);
+-
+-	if (unlikely(ksu_vfs_read_hook))
+-		ksu_handle_vfs_read(&file, &buf, &count, &pos);
+-#endif
+-
+ 	if (!(file->f_mode & FMODE_READ))
+ 		return -EBADF;
+ 	if (!(file->f_mode & FMODE_CAN_READ))
+diff --git a/fs/stat.c b/fs/stat.c
+index 62cbc1396..52b44444d 100644
+--- a/fs/stat.c
++++ b/fs/stat.c
+@@ -126,10 +126,9 @@ int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat,
+ 
+ #ifdef CONFIG_KSU
+ 	extern int ksu_handle_stat(int *dfd,
+-				   const char __user **filename_user,
++				   struct filename **filename_ptr,
+ 				   int *flags);
+-
+-	ksu_handle_stat(&dfd, &filename, &flag);
++	struct filename *fname;
+ #endif
+ 
+ 	if ((flag & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT |
+@@ -141,7 +140,13 @@ int vfs_fstatat(int dfd, const char __user *filename, struct kstat *stat,
+ 	if (flag & AT_EMPTY_PATH)
+ 		lookup_flags |= LOOKUP_EMPTY;
+ retry:
++#ifdef CONFIG_KSU
++	fname = getname_flags(filename, lookup_flags, NULL);
++	ksu_handle_stat(&dfd, &fname, &flag);
++	error = filename_lookup(dfd, fname, lookup_flags, &path, NULL);
++#else
+ 	error = user_path_at(dfd, filename, lookup_flags, &path);
++#endif
+ 	if (error)
+ 		goto out;
+ 
+diff --git a/fs/statfs.c b/fs/statfs.c
+index 8efec342f..545c13997 100644
+--- a/fs/statfs.c
++++ b/fs/statfs.c
+@@ -7,7 +7,7 @@
+ #include <linux/statfs.h>
+ #include <linux/security.h>
+ #include <linux/uaccess.h>
+-#if defined(CONFIG_KSU_SUSFS_SUS_MOUNT) || defined(CONFIG_KSU_SUSFS_OPEN_REDIRECT)
++#ifdef CONFIG_KSU_SUSFS
+ #include <linux/susfs_def.h>
+ #endif
+ #include "internal.h"
+@@ -66,27 +66,52 @@ static int statfs_by_dentry(struct dentry *dentry, struct kstatfs *buf)
+ 	return retval;
+ }
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
++extern bool susfs_is_inode_sus_kstat(struct inode *inode, bool *out_is_fuse);
++extern int susfs_sus_kstat_spoof_vfs_statfs(struct inode *inode,
++		struct kstatfs *buf, bool *is_fuse);
++
++static int susfs_statfs_by_dentry(struct dentry *dentry, struct kstatfs *buf,
++		bool *is_fuse)
++{
++	int retval;
++
++	if (!dentry->d_sb->s_op->statfs)
++		return -ENOSYS;
++	memset(buf, 0, sizeof(*buf));
++	retval = security_sb_statfs(dentry);
++	if (retval)
++		return retval;
++	retval = susfs_sus_kstat_spoof_vfs_statfs(dentry->d_inode, buf,
++			is_fuse);
++	if (retval)
++		retval = dentry->d_sb->s_op->statfs(dentry, buf);
++	if (!retval && !buf->f_frsize)
++		buf->f_frsize = buf->f_bsize;
++	return retval;
++}
++#endif
++
+ #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+ extern struct vfsmount *susfs_get_non_sus_vfsmnt_from_vfsmnt(struct vfsmount *vfsmnt);
+ #endif //#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+-extern int susfs_open_redirect_spoof_vfs_statfs(struct inode *inode, struct kstatfs *buf);
+-#endif
+-
+ int vfs_statfs(struct path *path, struct kstatfs *buf)
+ {
+ 	int error;
+ #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+ 	struct vfsmount *no_sus_vfsmnt = NULL;
+ #endif
+-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+-	struct inode *inode = path->dentry->d_inode;
+-#endif
++#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
++	if (susfs_is_current_app_uid()) {
++		struct inode *inode = path->dentry->d_inode;
++		bool is_fuse = false;
+ 
+-#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+-	if (SUSFS_IS_INODE_OPEN_REDIRECT(inode)) {
+-		if (!susfs_open_redirect_spoof_vfs_statfs(inode, buf))
+-			return 0;
++		if (susfs_is_inode_sus_kstat(inode, &is_fuse)) {
++			error = susfs_statfs_by_dentry(path->dentry, buf, &is_fuse);
++			if (!error)
++				buf->f_flags = calculate_f_flags(path->mnt);
++			return error;
++		}
+ 	}
+ #endif
+ #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+diff --git a/include/linux/namei.h b/include/linux/namei.h
+index cf437f56b..a4c758e43 100644
+--- a/include/linux/namei.h
++++ b/include/linux/namei.h
+@@ -48,6 +48,8 @@ enum {LAST_NORM, LAST_ROOT, LAST_DOT, LAST_DOTDOT, LAST_BIND};
+ extern int path_pts(struct path *path);
+ 
+ extern int user_path_at_empty(int, const char __user *, unsigned, struct path *, int *empty);
++extern int filename_lookup(int, struct filename *, unsigned, struct path *,
++			   struct path *);
+ 
+ static inline int user_path_at(int dfd, const char __user *name, unsigned flags,
+ 		 struct path *path)
+diff --git a/security/selinux/include/objsec.h b/security/selinux/include/objsec.h
+index 78cd34fe8..677ea4fcb 100644
+--- a/security/selinux/include/objsec.h
++++ b/security/selinux/include/objsec.h
+@@ -140,4 +140,14 @@ struct bpf_security_struct {
+ 
+ extern unsigned int selinux_checkreqprot;
+ 
++static inline struct inode_security_struct *selinux_inode(const struct inode *inode)
++{
++	return inode->i_security;
++}
++
++static inline struct task_security_struct *selinux_cred(const struct cred *cred)
++{
++	return cred->security;
++}
++
+ #endif /* _SELINUX_OBJSEC_H_ */

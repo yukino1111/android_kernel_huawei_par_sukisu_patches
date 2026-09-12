@@ -1,0 +1,89 @@
+name: Build latest dev PAR kernel
+
+on:
+  workflow_dispatch:
+    inputs:
+      selinux_mode:
+        description: SELinux configuration
+        required: true
+        default: enforcing
+        type: choice
+        options:
+          - enforcing
+          - selinux-switchable
+      enable_ksu:
+        description: KernelSU official dev with Huawei 4.9 compatibility
+        required: true
+        default: true
+        type: boolean
+      enable_susfs:
+        description: SuSFS latest development branch
+        required: true
+        default: true
+        type: boolean
+      enable_rekernel:
+        description: Re-Kernel including its network wake support
+        required: true
+        default: true
+        type: boolean
+      enable_droidspaces:
+        description: DroidSpaces legacy-kernel requirements
+        required: true
+        default: true
+        type: boolean
+      enable_ntsync:
+        description: NTSync with Linux 4.9 compatibility
+        required: true
+        default: true
+        type: boolean
+      enable_bbg:
+        description: Baseband Guard without boot or recovery blocking
+        required: true
+        default: true
+        type: boolean
+      enable_network:
+        description: Network extensions supported by Linux 4.9
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: par-kernel-dev-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ inputs.selinux_mode }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Check out development build definitions
+        uses: actions/checkout@v7
+
+      - name: Show runner storage
+        run: df -h /
+
+      - name: Build the selected development kernel
+        env:
+          ENABLE_KSU: ${{ inputs.enable_ksu && 1 || 0 }}
+          ENABLE_SUSFS: ${{ inputs.enable_susfs && 1 || 0 }}
+          ENABLE_REKERNEL: ${{ inputs.enable_rekernel && 1 || 0 }}
+          ENABLE_DROIDSPACES: ${{ inputs.enable_droidspaces && 1 || 0 }}
+          ENABLE_NTSYNC: ${{ inputs.enable_ntsync && 1 || 0 }}
+          ENABLE_BBG: ${{ inputs.enable_bbg && 1 || 0 }}
+          ENABLE_NETWORK: ${{ inputs.enable_network && 1 || 0 }}
+        run: |
+          JOBS="$(nproc)" scripts/build_par_kernel_dev_ci.sh \
+            "${{ inputs.selinux_mode }}" \
+            "$RUNNER_TEMP/par-kernel-dev"
+
+      - name: Upload the development candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: par-kernel-dev-${{ inputs.selinux_mode }}-${{ github.run_number }}
+          path: ${{ runner.temp }}/par-kernel-dev/dist/*
+          if-no-files-found: error
+          retention-days: 14

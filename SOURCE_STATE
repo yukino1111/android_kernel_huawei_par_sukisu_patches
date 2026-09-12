@@ -15,3 +15,20 @@ kernel_patch_sha256=4eb0e5c195d6642721144e917eb7017c03e082de58223788da8cf3e23f9b
 vdec_smmu_patch_sha256=41e1032873d2c59b351ad5d8c73022cf81ab9ee27bbce0a3ba9834d4459886dc
 sukisu_patch_sha256=b20eb144a7af02bf29190529400203415f8871f84c9907f55418b9ac1fbca2be
 config_sha256=7a85db3d685c5595f96e9f7d7df4a42e7512b0e99cf6acf1c4aa3aac01090ef2
+
+# Development builder refs are resolved to their current HEAD at dispatch time.
+kernelsu_dev_url=https://github.com/tiann/KernelSU
+kernelsu_dev_ref=refs/heads/dev
+susfs_dev_url=https://gitlab.com/simonpunk/susfs4ksu
+susfs_dev_ref=refs/heads/gki-android12-5.10-dev
+rekernel_url=https://github.com/Sakion-Team/Re-Kernel
+rekernel_ref=refs/heads/main
+droidspaces_url=https://github.com/ravindu644/Droidspaces-OSS
+droidspaces_ref=refs/heads/dev
+kernel_patches_url=https://github.com/WildKernels/kernel_patches
+kernel_patches_ref=refs/heads/main
+baseband_guard_url=https://github.com/vc-teahouse/Baseband-guard
+baseband_guard_ref=refs/heads/main
+huawei_ksu_reference_url=https://github.com/xixiaobei-bei/KernelSU_on_Huawei
+huawei_ksu_reference_ref=refs/heads/KernelSU_on_Huawei
+huawei_ksu_reference_commit=f0b3dabd03548f4f5e1c2ffc0415269049fdc387

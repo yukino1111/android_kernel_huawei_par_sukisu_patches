@@ -13,6 +13,12 @@ code does not transfer authorship to the repository maintainer.
 | Huawei Linux 4.9 SuSFS/KPM backport | Coconut (`Coconutat`) | Starting point for the legacy-kernel and Huawei compatibility portions of `patches/kernel/0001-par-android13-sukisu-susfs2.patch`; the released config still disables KPM |
 | Binder sender security-context support | Todd Kjos / Android kernel contributors | Android Binder security-context change backported into the aggregate kernel patch for Keystore2 and Vold |
 | Huawei KernelSU references | xixiaobei-bei and Coconut (`Coconutat`) | Reference implementations used during the Huawei port |
+| KernelSU development source | tiann and KernelSU contributors | Official `dev` branch used by the selectable development workflow |
+| SuSFS development source | simonpunk and SuSFS contributors | Latest `gki-android12-5.10-dev` source and KernelSU integration patch |
+| Re-Kernel | Sakion-Team and Re-Kernel contributors | Binder and signal wake/report integration |
+| DroidSpaces | ravindu644 and DroidSpaces contributors | Linux 4.9 container requirements and qtaguid fix |
+| NTSync | Elizabeth Figura, CodeWeavers, and WildKernels contributors | NTSync driver plus compatibility patch source |
+| Baseband Guard | vc-teahouse/Baseband-guard contributors | Optional anti-format protection with boot/recovery blocking disabled |
 
 The Binder work is based on Android common kernel commit
 `3d5885175b90e5059a0ff3dcbe3ba93de9c8ff6f` (original upstream commit
@@ -44,3 +50,9 @@ yukino1111:
 
 This local maintenance does not claim authorship of SukiSU, SuSFS, Linux,
 Huawei, LineageOS, or the referenced Android Binder implementation.
+
+The files under `patches/dev/` contain only the additional PAR/Linux 4.9
+adaptation applied after those upstream development sources are fetched. In
+particular, the KernelSU compatibility work retains the latest official dev
+tree as its source base while reusing legacy API and Huawei SELinux techniques
+from KernelSU-Next and `KernelSU_on_Huawei` where Linux 4.9 lacks newer APIs.

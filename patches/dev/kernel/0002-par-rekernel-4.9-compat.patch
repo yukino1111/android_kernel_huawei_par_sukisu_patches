@@ -1,0 +1,42 @@
+diff --git a/drivers/rekernel/rekernel.c b/drivers/rekernel/rekernel.c
+index d37841e02..dc2a1c70d 100644
+--- a/drivers/rekernel/rekernel.c
++++ b/drivers/rekernel/rekernel.c
+@@ -182,7 +182,7 @@ int register_netfilter(void) {
+ 	return LINE_SUCCESS;
+ }
+ #endif /* CONFIG_REKERNEL_NETWORK */
+-struct netlink_kernel_cfg cfg = {
++static struct netlink_kernel_cfg cfg = {
+ 	.input = netlink_rcv_msg, // set recv callback
+ };
+ #ifdef CONFIG_PROC_FS
+diff --git a/drivers/rekernel/rekernel.h b/drivers/rekernel/rekernel.h
+index af7022a85..8f5c9e12f 100644
+--- a/drivers/rekernel/rekernel.h
++++ b/drivers/rekernel/rekernel.h
+@@ -19,11 +19,8 @@ enum binder_type {
+ 	OVERFLOW,
+ };
+ 
+-static inline bool jobctl_frozen(struct task_struct* task) {
+-	return ((task->jobctl & JOBCTL_TRAP_FREEZE) != 0);
+-}
+ static inline bool frozen_task_group(struct task_struct* task) {
+-	return (jobctl_frozen(task) || cgroup_freezing(task));
++	return frozen(task->group_leader) || freezing(task->group_leader);
+ }
+ 
+ extern void rekernel_report(int reporttype, int type, pid_t src_pid, struct task_struct* src, pid_t dst_pid, struct task_struct* dst, bool oneway, struct binder_transaction_data* tr);
+diff --git a/include/uapi/linux/android/binder.h b/include/uapi/linux/android/binder.h
+index d689f8b1b..39d77930a 100644
+--- a/include/uapi/linux/android/binder.h
++++ b/include/uapi/linux/android/binder.h
+@@ -284,6 +284,7 @@ enum transaction_flags {
+ 	TF_ROOT_OBJECT	= 0x04,	/* contents are the component's root object */
+ 	TF_STATUS_CODE	= 0x08,	/* contents are a 32-bit status code */
+ 	TF_ACCEPT_FDS	= 0x10,	/* allow replies with file descriptors */
++	TF_UPDATE_TXN	= 0x40,	/* update the last pending async transaction */
+ };
+ 
+ struct binder_transaction_data {

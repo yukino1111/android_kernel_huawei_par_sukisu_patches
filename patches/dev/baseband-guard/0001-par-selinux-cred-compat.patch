@@ -1,0 +1,28 @@
+diff --git a/sepatch.txt b/sepatch.txt
+index 4f17c53..b4ff0f1 100644
+--- a/sepatch.txt
++++ b/sepatch.txt
+@@ -1,7 +1,7 @@
+ 
+ ifeq ($(CONFIG_BBG),y)
+ 
+-ifneq ($(shell grep -q '#define DEFINE_LSM(lsm)' $(srctree)/include/linux/lsm_hooks.h && echo y),)
++ifneq ($(shell grep -q 'DEFINE_LSM' $(srctree)/include/linux/lsm_hooks.h && echo y),)
+ ccflags-y += -DBBG_USE_DEFINE_LSM
+ endif
+ 
+diff --git a/tracing/tracing.c b/tracing/tracing.c
+index 95fc2e9..db5c945 100644
+--- a/tracing/tracing.c
++++ b/tracing/tracing.c
+@@ -15,10 +15,6 @@ struct lsm_blob_sizes bbg_blob_sizes __ro_after_init = {
+ 	.lbs_cred = sizeof(struct bbg_cred_security_struct),
+ };
+ #else
+-static inline struct task_security_struct *selinux_cred(const struct cred *cred)
+-{
+-	return cred->security;
+-}
+ #endif
+ 
+ int bb_cred_prepare(struct cred *new, const struct cred *old,
