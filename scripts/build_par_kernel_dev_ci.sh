@@ -40,6 +40,14 @@ fetch_revision() {
   git -C "$destination" checkout -q --detach FETCH_HEAD
 }
 
+fetch_revision_with_history() {
+  local url=$1 revision=$2 destination=$3
+  git init -q "$destination"
+  git -C "$destination" remote add origin "$url"
+  git -C "$destination" fetch -q --filter=blob:none origin "$revision"
+  git -C "$destination" checkout -q --detach FETCH_HEAD
+}
+
 apply_series() {
   local tree=$1 series=$2
   while IFS= read -r patch; do
@@ -87,7 +95,14 @@ git -C "$kernel_tree" apply \
   "$repo_root/patches/dev/kernel/0005-par-susfs-fsnotify-4.9-compat.patch"
 
 if [ "$enable_ksu" = 1 ]; then
-  fetch_revision "$(state_value kernelsu_dev_url)" "$(state_value kernelsu_dev_ref)" "$ksu_tree"
+  # KernelSU derives its internal version from the complete reachable commit
+  # count. A depth-1 checkout would incorrectly compile every dev build as
+  # version 30001.
+  fetch_revision_with_history \
+    "$(state_value kernelsu_dev_url)" "$(state_value kernelsu_dev_ref)" "$ksu_tree"
+  [ ! -f "$ksu_tree/.git/shallow" ] || die "KernelSU history is unexpectedly shallow"
+  ksu_git_version="$(git -C "$ksu_tree" rev-list --count HEAD)"
+  ksu_version="$((30000 + ksu_git_version))"
   git -C "$ksu_tree" apply \
     "$susfs_tree/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
   apply_series "$ksu_tree" "$repo_root/patches/dev/kernelsu/series"
@@ -171,7 +186,10 @@ rm -f "$dist_dir/image-path.txt"
   printf 'kernel_commit=%s\n' "$(git -C "$kernel_tree" rev-parse HEAD)"
   printf 'toolchain_commit=%s\n' "$(git -C "$toolchain_tree" rev-parse HEAD)"
   printf 'susfs_dev_commit=%s\n' "$(git -C "$susfs_tree" rev-parse HEAD)"
-  [ "$enable_ksu" = 0 ] || printf 'kernelsu_dev_commit=%s\n' "$(git -C "$ksu_tree" rev-parse HEAD)"
+  if [ "$enable_ksu" = 1 ]; then
+    printf 'kernelsu_dev_commit=%s\n' "$(git -C "$ksu_tree" rev-parse HEAD)"
+    printf 'kernelsu_internal_version=%s\n' "$ksu_version"
+  fi
   [ "$enable_rekernel" = 0 ] || printf 'rekernel_commit=%s\n' "$(git -C "$rekernel_tree" rev-parse HEAD)"
   [ "$enable_droidspaces" = 0 ] || printf 'droidspaces_dev_commit=%s\n' "$(git -C "$droidspaces_tree" rev-parse HEAD)"
   [ "$enable_ntsync" = 0 ] || printf 'kernel_patches_commit=%s\n' "$(git -C "$kernel_patches_tree" rev-parse HEAD)"

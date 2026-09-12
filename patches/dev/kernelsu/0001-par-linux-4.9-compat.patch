@@ -41,8 +41,8 @@ index f15b42e2..02de93fa 100644
  ifneq ($(GIT_ROOT),$(KERNEL_GIT_ROOT))
  # Only set version if it's a different repo from kernel
 -$(shell cd $(GIT_ROOT) && [ -f .git/shallow ] && $(GIT) fetch --unshallow 2>/dev/null || true)
-+# The build is pinned to a fetched commit; do not download the entire history
-+# merely to calculate an informational version number on legacy kernels.
++# The builder fetches complete KernelSU history before compilation, so version
++# calculation stays local and reports the real upstream internal version.
  KSU_GIT_VERSION := $(shell cd $(GIT_ROOT) && $(GIT) rev-list --count HEAD 2>/dev/null)
  KSU_GIT_VERSION_VALID := 1
  $(info -- KernelSU: Git repo detected at $(GIT_ROOT))
