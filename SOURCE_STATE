@@ -16,9 +16,9 @@ vdec_smmu_patch_sha256=41e1032873d2c59b351ad5d8c73022cf81ab9ee27bbce0a3ba9834d44
 sukisu_patch_sha256=b20eb144a7af02bf29190529400203415f8871f84c9907f55418b9ac1fbca2be
 config_sha256=7a85db3d685c5595f96e9f7d7df4a42e7512b0e99cf6acf1c4aa3aac01090ef2
 
-# Development builder refs are resolved to their current HEAD at dispatch time.
-kernelsu_dev_url=https://github.com/tiann/KernelSU
-kernelsu_dev_ref=refs/heads/dev
+# Selectable builder refs are resolved to their current HEAD at dispatch time.
+kernelsu_url=https://github.com/tiann/KernelSU
+kernelsu_ref=refs/heads/main
 susfs_dev_url=https://gitlab.com/simonpunk/susfs4ksu
 susfs_dev_ref=refs/heads/gki-android12-5.10-dev
 rekernel_url=https://github.com/Sakion-Team/Re-Kernel

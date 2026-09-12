@@ -99,7 +99,7 @@ if [ "$enable_ksu" = 1 ]; then
   # count. A depth-1 checkout would incorrectly compile every dev build as
   # version 30001.
   fetch_revision_with_history \
-    "$(state_value kernelsu_dev_url)" "$(state_value kernelsu_dev_ref)" "$ksu_tree"
+    "$(state_value kernelsu_url)" "$(state_value kernelsu_ref)" "$ksu_tree"
   [ ! -f "$ksu_tree/.git/shallow" ] || die "KernelSU history is unexpectedly shallow"
   ksu_git_version="$(git -C "$ksu_tree" rev-list --count HEAD)"
   ksu_version="$((30000 + ksu_git_version))"
@@ -187,7 +187,7 @@ rm -f "$dist_dir/image-path.txt"
   printf 'toolchain_commit=%s\n' "$(git -C "$toolchain_tree" rev-parse HEAD)"
   printf 'susfs_dev_commit=%s\n' "$(git -C "$susfs_tree" rev-parse HEAD)"
   if [ "$enable_ksu" = 1 ]; then
-    printf 'kernelsu_dev_commit=%s\n' "$(git -C "$ksu_tree" rev-parse HEAD)"
+    printf 'kernelsu_commit=%s\n' "$(git -C "$ksu_tree" rev-parse HEAD)"
     printf 'kernelsu_internal_version=%s\n' "$ksu_version"
   fi
   [ "$enable_rekernel" = 0 ] || printf 'rekernel_commit=%s\n' "$(git -C "$rekernel_tree" rev-parse HEAD)"

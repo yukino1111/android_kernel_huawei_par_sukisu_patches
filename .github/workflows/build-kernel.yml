@@ -12,7 +12,7 @@ on:
           - enforcing
           - selinux-switchable
       enable_ksu:
-        description: KernelSU official dev with Huawei 4.9 compatibility
+        description: KernelSU main HEAD with Huawei 4.9 compatibility
         required: true
         default: true
         type: boolean
